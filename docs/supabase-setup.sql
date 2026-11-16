@@ -36,6 +36,18 @@ create table if not exists public.profiles (
   last_seen            timestamptz
 );
 
+-- Temporary permissions (e.g. Finance access for a few hours)
+create table if not exists public.temp_grants (
+  id          uuid primary key default gen_random_uuid(),
+  profile_id  uuid not null references public.profiles(id) on delete cascade,
+  perm        text not null,
+  expires_at  timestamptz not null,
+  granted_by  uuid references public.profiles(id),
+  request_id  uuid,
+  created_at  timestamptz not null default now()
+);
+create index if not exists temp_grants_profile_idx on public.temp_grants (profile_id, expires_at);
+
 -- Effective permissions of the signed-in employee (empty when deactivated).
 create or replace function public.my_perms() returns text[]
 language sql stable security definer set search_path = public as $$
@@ -43,7 +55,8 @@ language sql stable security definer set search_path = public as $$
     select case when not p.active then '{}'::text[]
                 when '*' = any(coalesce(r.perms, '{}')) then '{*}'::text[]
                 else array(select unnest(coalesce(r.perms, '{}') || p.extra_perms)
-                           except select unnest(p.revoked_perms)) end
+                           except select unnest(p.revoked_perms)
+                           union select g.perm from temp_grants g where g.profile_id = p.id and g.expires_at > now()) end
       from profiles p left join roles r on r.id = p.role_id
      where p.id = auth.uid()), '{}'::text[]);
 $$;
@@ -192,6 +205,45 @@ create table if not exists public.contacts (
 );
 create index if not exists contacts_student_idx on public.contacts (student_id, happened_at desc);
 
+-- Follow-up reminders (shown on each employee's Today list)
+create table if not exists public.follow_ups (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid not null references public.students(id) on delete cascade,
+  due_date    date not null,
+  note        text not null,
+  assigned_to uuid references public.profiles(id),
+  done        boolean not null default false,
+  done_at     timestamptz,
+  done_by     uuid references public.profiles(id),
+  created_at  timestamptz not null default now(),
+  created_by  uuid references public.profiles(id),
+  updated_at  timestamptz not null default now(),
+  updated_by  uuid references public.profiles(id)
+);
+create index if not exists follow_ups_due_idx on public.follow_ups (assigned_to, done, due_date);
+create index if not exists follow_ups_student_idx on public.follow_ups (student_id, due_date);
+
+-- Requests to the Admin, approved directly or with a one-time code made on the Admin's computer:
+--   remove_student  – only Admins can delete students; others ask
+--   finance_access  – temporary access to Finance for an employee who doesn't normally have it
+create table if not exists public.admin_requests (
+  id            uuid primary key default gen_random_uuid(),
+  kind          text not null,
+  student_id    uuid,                       -- kept after the student is deleted
+  student_name  text,
+  student_ref   bigint,
+  reason        text,
+  grant_hours   int not null default 8,
+  requested_by  uuid references public.profiles(id),
+  requested_at  timestamptz not null default now(),
+  status        text not null default 'pending',   -- pending / code_issued / done / rejected / cancelled
+  decided_by    uuid references public.profiles(id),
+  decided_at    timestamptz,
+  code_hash     text,
+  code_expires  timestamptz
+);
+create index if not exists admin_requests_status_idx on public.admin_requests (status, requested_at desc);
+
 -- ---------------------------------------------------------------------
 --  Who-did-what: stamps and audit log
 -- ---------------------------------------------------------------------
@@ -232,7 +284,7 @@ declare
   k text;
 begin
   for k in select jsonb_object_keys(o || n) loop
-    if k in ('id', 'updated_at', 'updated_by', 'created_at', 'created_by', 'ref', 'last_seen') then continue; end if;
+    if k in ('id', 'updated_at', 'updated_by', 'created_at', 'created_by', 'ref', 'last_seen', 'code_hash') then continue; end if;
     if coalesce(o -> k, 'null') is distinct from coalesce(n -> k, 'null') then
       if tg_op = 'INSERT' and n -> k in ('null', '[]', '""') then continue; end if;
       diff := diff || jsonb_build_object(k, jsonb_build_array(o -> k, n -> k));
@@ -245,7 +297,7 @@ begin
           case when (r ->> 'id') ~* '^[0-9a-f-]{36}$' then (r ->> 'id')::uuid end,
           coalesce((r ->> 'student_id')::uuid, case when tg_table_name = 'students' then (r ->> 'id')::uuid end),
           case tg_op when 'INSERT' then 'created' when 'UPDATE' then 'updated' else 'deleted' end,
-          coalesce(r ->> 'full_name', r ->> 'name', r ->> 'summary'),
+          coalesce(r ->> 'full_name', r ->> 'name', r ->> 'summary', r ->> 'note', r ->> 'student_name', r ->> 'kind', r ->> 'perm'),
           diff);
   return null;
 end $$;
@@ -253,11 +305,11 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['students', 'contacts'] loop
+  foreach t in array array['students', 'contacts', 'follow_ups'] loop
     execute format('drop trigger if exists stamp on public.%I', t);
     execute format('create trigger stamp before insert or update on public.%I for each row execute function public.stamp_row()', t);
   end loop;
-  foreach t in array array['students', 'contacts', 'statuses', 'profiles', 'roles'] loop
+  foreach t in array array['students', 'contacts', 'follow_ups', 'statuses', 'profiles', 'roles', 'admin_requests', 'temp_grants'] loop
     execute format('drop trigger if exists audit on public.%I', t);
     execute format('create trigger audit after insert or update or delete on public.%I for each row execute function public.audit_row()', t);
   end loop;
@@ -272,12 +324,15 @@ alter table public.statuses  enable row level security;
 alter table public.students  enable row level security;
 alter table public.contacts  enable row level security;
 alter table public.audit_log enable row level security;
+alter table public.follow_ups enable row level security;
+alter table public.admin_requests enable row level security;
+alter table public.temp_grants enable row level security;
 
 do $$
 declare p record;
 begin
   for p in select policyname, tablename from pg_policies where schemaname = 'public'
-           and tablename in ('roles', 'profiles', 'statuses', 'students', 'contacts', 'audit_log') loop
+           and tablename in ('roles', 'profiles', 'statuses', 'students', 'contacts', 'follow_ups', 'admin_requests', 'temp_grants', 'audit_log') loop
     execute format('drop policy %I on public.%I', p.policyname, p.tablename);
   end loop;
 end $$;
@@ -301,6 +356,15 @@ create policy contacts_insert on public.contacts for insert with check (has_perm
 create policy contacts_update on public.contacts for update using (created_by = auth.uid() or has_perm('students.delete'));
 create policy contacts_delete on public.contacts for delete using (created_by = auth.uid() or has_perm('students.delete'));
 
+create policy follow_ups_read   on public.follow_ups for select using (has_perm('students.view'));
+create policy follow_ups_insert on public.follow_ups for insert with check (has_perm('students.view'));
+create policy follow_ups_update on public.follow_ups for update using (has_perm('students.view'));
+create policy follow_ups_delete on public.follow_ups for delete using (created_by = auth.uid() or has_perm('students.delete'));
+
+-- Requests are read by the requester and by Admins; all changes go through the functions below.
+create policy requests_read on public.admin_requests for select using (requested_by = auth.uid() or has_perm('users.manage') or has_perm('students.delete'));
+create policy grants_read on public.temp_grants for select using (profile_id = auth.uid() or has_perm('users.manage'));
+
 create policy audit_read on public.audit_log for select using (
   has_perm('audit.view') or (student_id is not null and has_perm('students.view')));
 -- No insert/update/delete policies: the log is written only by the database itself and can't be edited.
@@ -318,5 +382,95 @@ end $$;
 drop trigger if exists guard_last_admin on public.profiles;
 create trigger guard_last_admin before update on public.profiles for each row execute function public.guard_last_admin();
 
+-- ---------------------------------------------------------------------
+--  Requests to the Admin: student removal and temporary Finance access
+-- ---------------------------------------------------------------------
+create or replace function public.request_removal(student uuid, why text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare s record; rid uuid;
+begin
+  if not has_perm('students.view') then raise exception 'Not allowed'; end if;
+  select id, full_name, ref into s from students where id = student;
+  if s.id is null then raise exception 'Student not found'; end if;
+  if exists (select 1 from admin_requests where kind = 'remove_student' and student_id = student and status in ('pending', 'code_issued')) then
+    raise exception 'A removal request for this student is already waiting for the Admin.';
+  end if;
+  insert into admin_requests (kind, student_id, student_name, student_ref, reason, requested_by)
+  values ('remove_student', s.id, s.full_name, s.ref, nullif(trim(why), ''), auth.uid()) returning id into rid;
+  return rid;
+end $$;
+
+create or replace function public.request_finance_access(why text, hours int default 8) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare rid uuid;
+begin
+  if not is_active() then raise exception 'Not allowed'; end if;
+  if exists (select 1 from admin_requests where kind = 'finance_access' and requested_by = auth.uid() and status in ('pending', 'code_issued')) then
+    raise exception 'You already have a Finance access request waiting for the Admin.';
+  end if;
+  insert into admin_requests (kind, reason, grant_hours, requested_by)
+  values ('finance_access', nullif(trim(why), ''), greatest(1, least(coalesce(hours, 8), 72)), auth.uid()) returning id into rid;
+  return rid;
+end $$;
+
+-- Carries out an approved request (called by the functions below only).
+create or replace function public.carry_out_request(r public.admin_requests) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if r.kind = 'remove_student' then
+    delete from students where id = r.student_id;
+  elsif r.kind = 'finance_access' then
+    insert into temp_grants (profile_id, perm, expires_at, granted_by, request_id)
+    values (r.requested_by, 'finance.view', now() + make_interval(hours => r.grant_hours), r.decided_by, r.id);
+  end if;
+  update admin_requests set status = 'done', code_hash = null where id = r.id;
+end $$;
+revoke execute on function public.carry_out_request from public, anon, authenticated;
+
+-- Admin: approve now, reject, or store a one-time code (only its hash is kept) for the requesting employee.
+create or replace function public.admin_resolve_request(request uuid, decision text, code text default null, valid_minutes int default 60) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+declare r public.admin_requests;
+begin
+  select * into r from admin_requests where id = request and status in ('pending', 'code_issued');
+  if r.id is null then raise exception 'This request has already been dealt with.'; end if;
+  if (r.kind = 'remove_student' and not has_perm('students.delete')) or (r.kind = 'finance_access' and not has_perm('users.manage')) then
+    raise exception 'Only an Admin can do this.';
+  end if;
+  update admin_requests set decided_by = auth.uid(), decided_at = now() where id = r.id returning * into r;
+  if decision = 'approve' then
+    perform carry_out_request(r);
+  elsif decision = 'reject' then
+    update admin_requests set status = 'rejected', code_hash = null where id = r.id;
+  elsif decision = 'code' then
+    if code is null or length(trim(code)) < 6 then raise exception 'Code too short'; end if;
+    update admin_requests set status = 'code_issued', code_hash = crypt(upper(trim(code)), gen_salt('bf')),
+           code_expires = now() + make_interval(mins => greatest(5, least(valid_minutes, 1440)))
+     where id = r.id;
+  else raise exception 'Unknown decision';
+  end if;
+end $$;
+
+-- Employee: use the one-time code from the Admin. It works once, only for that request and that employee,
+-- and only until it expires.
+create or replace function public.redeem_code(request uuid, code text) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare r public.admin_requests;
+begin
+  select * into r from admin_requests where id = request and requested_by = auth.uid() and status = 'code_issued' and code_expires > now();
+  if r.id is null or r.code_hash is null or crypt(upper(trim(code)), r.code_hash) <> r.code_hash then
+    raise exception 'The code is not right, has expired, or was not issued to you.';
+  end if;
+  perform carry_out_request(r);
+  return r.kind;
+end $$;
+
+create or replace function public.cancel_request(request uuid) returns void
+language sql security definer set search_path = public as $$
+  update admin_requests set status = 'cancelled', code_hash = null
+   where id = request and requested_by = auth.uid() and status in ('pending', 'code_issued');
+$$;
+
 grant execute on function public.my_perms, public.has_perm, public.is_active, public.touch_profile,
-  public.admin_set_password, public.admin_delete_user to authenticated;
+  public.admin_set_password, public.admin_delete_user, public.request_removal, public.request_finance_access,
+  public.admin_resolve_request, public.redeem_code, public.cancel_request to authenticated;

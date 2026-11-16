@@ -6,6 +6,8 @@ import { state, can, loadCore, loadMe, roleName, personName } from './store.js';
 import { PERMISSIONS, PERM_LABEL } from './fields.js';
 import { passwordForm, boot, VERSION } from './app.js';
 import { describeChange } from './students.js';
+import { openExternal } from './followups.js';
+import { copyText } from './ui.js';
 
 const SECTIONS = [
   ['account', 'My account', 'key'],
@@ -255,4 +257,17 @@ function about(el) {
     h('div.row-btns', h('button.btn.ghost-danger', { onclick: async () => {
       if (await confirmBox(t('Disconnect this computer'), t('Sign out and remove the database connection from this computer? Nothing is deleted from the database.'), t('Disconnect'), true)) { await api.signOut(); api.clearConfig(); boot(); }
     } }, icon('logout', 16), t('Disconnect this computer')))));
+  if (can('users.manage')) {
+    const guide = 'https://github.com/01IM/student-portal/blob/main/CLAUDE.md';
+    const prompt = `I want to change the "Student Portal" app (AKI Consultant). Its code is at https://github.com/01IM/student-portal. ` +
+      `Before doing anything, read ${guide}, which explains how the app is built and the rules for changing it. Then help me with this change: `;
+    el.append(h('section.card.pad-lg',
+      h('h3', t('Change the app with Claude')),
+      h('p.muted', t('Anyone with their own Claude account can continue developing Student Portal. Give Claude the starter text below: it points Claude to a guide in the code that explains how everything works.')),
+      h('pre.prompt', prompt + '…'),
+      h('div.row-btns',
+        h('button.btn.primary', { onclick: () => copyText(prompt) }, icon('copy', 16), t('Copy starter text')),
+        h('button.btn', { onclick: () => openExternal(guide) }, icon('globe', 16), t('Open the guide for Claude')),
+        h('button.btn', { onclick: () => openExternal('https://github.com/01IM/student-portal') }, icon('doc', 16), t('Open the code on GitHub')))));
+  }
 }

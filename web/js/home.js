@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import { h, clear, icon, fail, fmtDate, daysUntil, ago, studentRef, pill } from './ui.js';
 import { state, can, activeStatuses, statusById, personName } from './store.js';
 import { setListFilter, describeChange } from './students.js';
+import { todayCard } from './followups.js';
 
 export async function renderHome(el) {
   const me = state.me;
@@ -24,6 +25,7 @@ export async function renderHome(el) {
       api.select('audit_log', 'select=*&student_id=not.is.null&order=at.desc&limit=12').catch(() => []),
     ]);
     clear(body);
+    const today = await todayCard();
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     const mine = students.filter((s) => s.counsellor_id === me.id);
     const closed = new Set(state.statuses.filter((s) => /withdrawn|not proceeding|enrolled/i.test(s.name)).map((s) => s.id));
@@ -35,6 +37,7 @@ export async function renderHome(el) {
       stat(t('New this month'), students.filter((s) => new Date(s.created_at) >= monthStart).length, 'plus', () => go({ sort: 'created_at', dir: -1 })),
       stat(t('My students'), mine.length, 'users', () => go({ counsellor: me.id })),
       stat(t('In progress'), open.length, 'clock', () => go({}))));
+    body.append(today);
 
     // --- pipeline
     const counts = {}; students.forEach((s) => { counts[s.status_id || ''] = (counts[s.status_id || ''] || 0) + 1; });
@@ -63,9 +66,6 @@ export async function renderHome(el) {
         h('div', h('b', s.full_name), h('small.muted', `${label} · ${fmtDate(date)}`)),
         h('span.tag' + (d < 0 ? '.red' : d <= 60 ? '.amber' : ''), d < 0 ? t('expired') : t('{n} days', { n: d })))))) : h('p.muted.pad', t('Nothing expiring soon.'))));
 
-    // --- tasks (next update)
-    body.append(h('section.card', h('div.card-head', h('h2', t('My tasks & follow-ups'))),
-      h('p.muted.pad', t('Tasks, follow-up reminders and deadlines arrive in the next update.'))));
 
     // --- recent activity
     const names = Object.fromEntries(students.map((s) => [s.id, s]));

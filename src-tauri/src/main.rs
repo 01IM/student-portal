@@ -32,6 +32,16 @@ struct UpdateInfo {
     notes: String,
 }
 
+// Opens WhatsApp Desktop, the default email app, or a web link.
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    let ok = ["whatsapp://", "mailto:", "https://", "tel:"].iter().any(|p| url.starts_with(p));
+    if !ok {
+        return Err("This kind of link can't be opened".into());
+    }
+    open::that_detached(&url).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn app_build() -> u64 {
     this_build()
@@ -101,7 +111,7 @@ fn main() {
                 let _ = w.set_focus();
             }
         }))
-        .invoke_handler(tauri::generate_handler![app_build, check_update, install_update])
+        .invoke_handler(tauri::generate_handler![open_external, app_build, check_update, install_update])
         .run(tauri::generate_context!())
         .expect("error while running Student Portal");
 }

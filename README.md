@@ -12,11 +12,14 @@ It runs on its own: no Claude, no subscription. The database is AKI's own free S
 - Customisable student statuses with colours and pipeline order
 - Duplicate check when registering (same Civil ID or passport can't be registered twice)
 - Communication log per student (calls, WhatsApp, emails, visits)
+- Follow-up reminders set from a student's profile, shown on Home ("Today's follow-ups") and on the Tasks page, with one-click WhatsApp and email
+- Only Admins remove students; employees send a removal request or use a one-time code the Admin creates. Finance access can be requested the same way. Requests and answers appear under Notifications.
+- Settings → Connection & about (Admin): starter text and a guide ([CLAUDE.md](CLAUDE.md)) so anyone can continue developing the app with their own Claude
 - Full change history per student, plus a company-wide activity log: who changed what, when, from what to what
 - Home screen with pipeline, expiring documents and recent activity
 - Automatic updates
 
-**Coming next:** applications per university and documents → universities, tasks & reminders → visa section, guides and bank statement calculator → finance → backups (nightly Drive snapshots, daily CSV on the admin PC, CSV restore).
+**Coming next:** applications per university and documents (with a full local copy on the admin's laptop) → universities, tasks & reminders → visa section, guides and bank statement calculator → finance → backups (nightly Drive snapshots, daily CSV on the admin PC, CSV restore).
 
 ---
 

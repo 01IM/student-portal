@@ -6,6 +6,8 @@ import { state, can, loadMe, loadCore, roleName } from './store.js';
 import { renderHome } from './home.js';
 import { renderStudents, renderStudent } from './students.js';
 import { renderSettings } from './settings.js';
+import { renderTasks } from './followups.js';
+import { renderNotifications, refreshBadge, financeAccessCard } from './requests.js';
 
 export const VERSION = '0.1.0';
 const root = document.getElementById('app');
@@ -111,14 +113,14 @@ const NAV = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'students', label: 'Students', icon: 'student', perm: 'students.view' },
   { id: 'universities', label: 'Universities', icon: 'uni', perm: 'universities.view', soon: true },
-  { id: 'tasks', label: 'Tasks', icon: 'tasks', soon: true },
+  { id: 'tasks', label: 'Tasks', icon: 'tasks', perm: 'students.view' },
   { id: 'visa', label: 'Visa guides', icon: 'visa', perm: 'visa.view', soon: true },
-  { id: 'finance', label: 'Finance', icon: 'finance', perm: 'finance.view', soon: true },
+  { id: 'finance', label: 'Finance', icon: 'finance', soon: true },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', badge: true },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 const SOON = {
   universities: ['Universities & courses', 'Partner universities with contacts, countries, course catalogues and commission terms, linked to each student\'s applications.'],
-  tasks: ['Tasks & reminders', 'Follow-up reminders, tasks assigned between staff, and alerts for application, deposit and visa deadlines.'],
   visa: ['Visa guides', 'Step-by-step student visa guides for 12 countries, applied from Kuwait, with a bank statement calculator.'],
   finance: ['Finance', 'Commissions expected and received, IELTS, visa and translation income, expenses and reports in KWD.'],
 };
@@ -129,7 +131,7 @@ function shell() {
   const nav = h('nav.nav');
   for (const n of NAV) {
     if (n.perm && !can(n.perm)) continue;
-    nav.append(h('a.nav-item', { href: '#/' + n.id, 'data-id': n.id }, icon(n.icon, 19), h('span', t(n.label)), n.soon ? h('em.soon', t('soon')) : null));
+    nav.append(h('a.nav-item', { href: '#/' + n.id, 'data-id': n.id }, icon(n.icon, 19), h('span', t(n.label)), n.soon ? h('em.soon', t('soon')) : null, n.badge ? h('em.badge', { hidden: true }, '0') : null));
   }
   main = h('main.main');
   clear(root).append(h('div.layout',
@@ -143,7 +145,9 @@ function shell() {
   window.onhashchange = route;
   route();
   checkForUpdate();
+  refreshBadge();
 }
+setInterval(() => { if (main) refreshBadge().catch(() => {}); }, 60000);
 
 // ---------------- self-update (Windows app only) ----------------
 async function checkForUpdate() {
@@ -174,6 +178,12 @@ export function route() {
     if (page === 'students' && parts[1]) return renderStudent(main, parts[1], parts[2]);
     if (page === 'students') return renderStudents(main);
     if (page === 'settings') return renderSettings(main, parts[1]);
+    if (page === 'tasks') return renderTasks(main);
+    if (page === 'notifications') return renderNotifications(main);
+    if (page === 'finance' && !can('finance.view')) {
+      main.append(h('div.page-head', h('h1', t('Finance'))));
+      return financeAccessCard(main, () => route());
+    }
     if (SOON[page]) return soonPage(main, page);
     return renderHome(main);
   } catch (e) { fail(e); }
@@ -190,7 +200,7 @@ let lastFocus = Date.now();
 window.addEventListener('focus', async () => {
   if (!main || Date.now() - lastFocus < 20000) return;
   lastFocus = Date.now();
-  try { await loadCore(); window.dispatchEvent(new Event('sp:refresh')); } catch {}
+  try { await loadCore(); await loadMe(); refreshBadge(); window.dispatchEvent(new Event('sp:refresh')); } catch {}
 });
 
 boot();

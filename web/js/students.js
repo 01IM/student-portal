@@ -4,6 +4,8 @@ import { t } from './i18n.js';
 import { h, clear, icon, toast, fail, modal, confirmBox, fmtDate, fmtDateTime, ago, daysUntil, studentRef, initials, pill, copyText } from './ui.js';
 import { state, can, activeStatuses, statusById, personName, staff } from './store.js';
 import { GROUPS, FIELD, OPTIONS, CONTACT_KIND_LABEL, CONTACT_KIND_ICON } from './fields.js';
+import { followUpForm, followUpsTab, contactButtons } from './followups.js';
+import { removalState, requestRemoval, enterCode } from './requests.js';
 
 // =====================================================================
 //  List
@@ -186,11 +188,11 @@ function buildForm(groups, values) {
   return { form, read, inputs };
 }
 function mandatoryNote() {
-  return h('div.notice.info', icon('alert', 16), h('div', h('b', t('Mandatory: ')), t('full name, phone number and date of birth (marked *). Please fill these in for every student. Everything else can be added later.')));
+  return h('div.notice.info.slim', icon('alert', 15), h('span', h('b', t('Mandatory:')), ' ', t('Name, Number, DOB')));
 }
 function validate(v) {
-  const missing = [!v.full_name && t('full name'), !v.phone && t('phone number'), !v.dob && t('date of birth')].filter(Boolean);
-  if (missing.length) throw new Error(t('Please fill in the mandatory fields: {f}.', { f: missing.join(', ') }));
+  const missing = [!v.full_name && t('Name'), !v.phone && t('Number'), !v.dob && t('DOB')].filter(Boolean);
+  if (missing.length) throw new Error(t('Mandatory: {f}', { f: missing.join(', ') }));
   if (v.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)) throw new Error(t('The email address does not look right.'));
 }
 
@@ -251,6 +253,7 @@ const TABS = [
   ['applications', 'Applications', 'uni', true],
   ['documents', 'Documents', 'doc', true],
   ['visa', 'Visa', 'visa', true],
+  ['followups', 'Follow-ups', 'tasks'],
   ['contacts', 'Communication', 'chat'],
   ['history', 'History', 'history'],
 ];
@@ -281,8 +284,8 @@ export async function renderStudent(el, id, tab = 'overview') {
       const d = daysUntil(s[k]);
       if (d != null && d <= 180) alerts.push(h('span.tag' + (d < 0 ? '.red' : '.amber'), icon('alert', 13), d < 0 ? t('{x} expired', { x: t(label) }) : t('{x} expires in {n} days', { x: t(label), n: d })));
     }
-    const missing = [!s.phone && t('phone number'), !s.dob && t('date of birth')].filter(Boolean);
-    if (missing.length) alerts.unshift(h('span.tag.red', icon('alert', 13), t('Missing mandatory info: {f}', { f: missing.join(', ') })));
+    const missing = [!s.phone && t('Number'), !s.dob && t('DOB')].filter(Boolean);
+    if (missing.length) alerts.unshift(h('span.tag.red', icon('alert', 13), t('Missing: {f}', { f: missing.join(', ') })));
     const quick = (ic, val, title) => val ? h('button.quick', { title: t('Copy {x}', { x: t(title) }), onclick: () => copyText(val) }, icon(ic, 15), h('span', val)) : null;
 
     const tabBar = h('div.tabs');
@@ -299,11 +302,13 @@ export async function renderStudent(el, id, tab = 'overview') {
           h('div.ph-meta', [s.nationality, s.preferred_level, s.preferred_courses, (s.preferred_countries || []).join(', ')].filter(Boolean).join(' · ') || h('span.muted', t('No details yet'))),
           h('div.ph-quick', quick('phone', s.phone, 'phone'), quick('mail', s.email, 'email'), quick('chat', s.whatsapp, 'WhatsApp'), ...alerts)),
         h('div.ph-side',
+          h('div.ph-actions', contactButtons(s), h('button.btn.sm', { onclick: () => followUpForm(s, null, () => { if (tab === 'followups') draw(); }) }, icon('clock', 14), t('Follow-up'))),
           statusSel || (st ? pill(st.name, st.color) : null),
           h('small.muted', t('Counsellor')), h('b', personName(s.counsellor_id) || t('Unassigned')))),
       tabBar, content);
 
     if (tab === 'contacts') return contactsTab(content, s);
+    if (tab === 'followups') return followUpsTab(content, s);
     if (tab === 'history') return historyTab(content, s);
     if (['applications', 'documents', 'visa'].includes(tab)) {
       const text = { applications: 'Each university application with its own status, offer details and deadlines.', documents: 'Passport, transcripts, certificates, test results, offers and visa documents, stored securely on AKI\'s Google Drive.', visa: 'Previous refusals check, visa checklist, appointments and decision, plus the bank statement calculator.' }[tab];
@@ -335,10 +340,18 @@ export async function renderStudent(el, id, tab = 'overview') {
     view.append(h('section.card.meta-card', h('dl.facts',
       h('div', h('dt', t('Registered')), h('dd', `${fmtDateTime(s.created_at)} · ${personName(s.created_by) || '—'}`)),
       h('div', h('dt', t('Last changed')), h('dd', `${fmtDateTime(s.updated_at)} · ${personName(s.updated_by) || '—'}`)))));
+    const removal = h('span');
     const bar = h('div.section-bar',
       canEdit ? h('button.btn.primary', { onclick: () => editMode(content) }, icon('edit', 16), t('Edit profile')) : null,
-      can('students.delete') ? h('button.btn.ghost-danger', { onclick: del }, icon('trash', 16), t('Delete')) : null);
+      can('students.delete') ? h('button.btn.ghost-danger', { onclick: del }, icon('trash', 16), t('Remove student')) : removal);
     content.append(bar, view);
+    if (!can('students.delete')) {
+      removalState(s.id).then((r) => {
+        if (!r) return removal.append(h('button.btn.ghost-danger', { onclick: () => requestRemoval(s, draw) }, icon('trash', 16), t('Request removal')));
+        if (r.status === 'code_issued') return removal.append(h('button.btn.ghost-danger', { onclick: () => enterCode(r, () => { cache = null; location.hash = '#/students'; }) }, icon('key', 16), t('Enter Admin code to remove')));
+        removal.append(h('span.tag.amber', icon('clock', 13), t('Removal requested · waiting for Admin')));
+      });
+    }
   }
 
   function editMode(content) {
@@ -359,7 +372,7 @@ export async function renderStudent(el, id, tab = 'overview') {
   }
 
   async function del() {
-    if (!(await confirmBox(t('Delete student'), t('Delete {name} and their communication log permanently? The deletion is recorded in the activity log. Consider setting the status to "Not Proceeding" instead.', { name: s.full_name }), t('Delete permanently'), true))) return;
+    if (!(await confirmBox(t('Remove student'), t('Remove {name} and their records permanently? The deletion is recorded in the activity log. Consider setting the status to "Not Proceeding" instead.', { name: s.full_name }), t('Delete permanently'), true))) return;
     try { await api.remove('students', s.id); cache = null; toast(t('Student deleted')); location.hash = '#/students'; } catch (e) { fail(e); }
   }
 }

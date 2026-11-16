@@ -27,7 +27,7 @@ export const GROUPS = [
     { key: 'nationality', label: 'Nationality', type: 'combo', options: NATIONALITIES },
     { key: 'status_id', label: 'Status', type: 'status' },
     { key: 'counsellor_id', label: 'Assigned counsellor', type: 'counsellor' },
-    { key: 'lead_source', label: 'How they found AKI', type: 'combo', options: OPTIONS.lead_source },
+    { key: 'lead_source', label: 'Lead type', type: 'combo', options: OPTIONS.lead_source },
   ] },
   { title: 'Identity documents', fields: [
     { key: 'civil_id', label: 'Civil ID number', type: 'text' },
