@@ -8,7 +8,7 @@ It runs on its own: no Claude, no subscription. The database is AKI's own free S
 
 - Employee sign-in with roles (Admin, Counsellor, Accountant, Front desk), custom roles, and per-person permission adjustments
 - Admin screen to add, deactivate and reset employees
-- Student database: register, search, filter, sort, and full profiles (personal, Civil ID / passport with expiry warnings, contact & guardian, education, study preferences, notes)
+- Student database: register, search, filter, sort, and full profiles (personal, Civil ID / passport, contact & guardian, education, study preferences, notes)
 - Customisable student statuses with colours and pipeline order
 - Duplicate check when registering (same Civil ID or passport can't be registered twice)
 - Communication log per student (calls, WhatsApp, emails, visits)
@@ -16,7 +16,7 @@ It runs on its own: no Claude, no subscription. The database is AKI's own free S
 - Only Admins remove students; employees send a removal request or use a one-time code the Admin creates. Finance access can be requested the same way. Requests and answers appear under Notifications.
 - Settings → Connection & about (Admin): starter text and a guide ([CLAUDE.md](CLAUDE.md)) so anyone can continue developing the app with their own Claude
 - Full change history per student, plus a company-wide activity log: who changed what, when, from what to what
-- Home screen with pipeline, expiring documents and recent activity
+- Home screen with today's follow-ups, pipeline and recent activity
 - Automatic updates
 
 **Coming next:** applications per university and documents (with a full local copy on the admin's laptop) → universities, tasks & reminders → visa section, guides and bank statement calculator → finance → backups (nightly Drive snapshots, daily CSV on the admin PC, CSV restore).

@@ -21,7 +21,7 @@ web/                    the whole interface: plain HTML/CSS/JS ES modules, NO bu
   js/ui.js              h() element builder, icons, modal/confirm/toast, date formatting (dd Mon yyyy, 12-hour)
   js/i18n.js            t() translation layer
   js/fields.js          student profile fields (grouped), option lists, permission list
-  js/home.js            Home: today's follow-ups, stats, pipeline, expiring passports/Civil IDs, recent activity
+  js/home.js            Home: today's follow-ups, stats, pipeline, recent activity
   js/students.js        student list (search/filter/sort), profile tabs, new-student form, communication log, change history
   js/followups.js       follow-up reminders, Tasks page, WhatsApp (whatsapp://send) and email (mailto:) buttons
   js/requests.js        requests to the Admin (remove student, temporary Finance access), one-time codes, Notifications page
@@ -48,6 +48,7 @@ docs/supabase-setup.sql the complete database: tables, row-level security, audit
 - Each university application gets its own status, plus one overall student status.
 - Only Admins remove students. Others send a removal request; the Admin removes it, rejects, or creates a one-time code **on the Admin's computer** (only its hash is stored) that lets that employee do it once. Finance access works the same way (temporary access). Notifications are **in-app only** (Notifications page + badge), no Windows pop-ups.
 - Follow-ups: set from a student's profile (date + reminder + who it's for); shown on Home ("Today's follow-ups") and Tasks, with a WhatsApp button (opens WhatsApp Desktop; 8-digit numbers get +965) and an email button (default mail app, student's name filled in).
+- No expiry warnings for students' passports/Civil IDs (not AKI's job); the expiry dates are just stored and shown on the profile.
 - Communication log is entered manually. Student IDs shown as `AKI-00001`.
 - Branding: AKI Consultant logo (`web/img/logo.png`), colours from the logo (cyan `#1aa9cf`, deep teal `#0b7ea3`, coral, yellow), Inter font, light theme.
 

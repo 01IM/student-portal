@@ -10,7 +10,7 @@ import { removalState, requestRemoval, enterCode } from './requests.js';
 // =====================================================================
 //  List
 // =====================================================================
-const LIST_COLS = 'id,ref,full_name,nationality,phone,email,status_id,counsellor_id,preferred_courses,preferred_countries,preferred_level,civil_id,passport_no,lead_source,created_at,updated_at,passport_expiry';
+const LIST_COLS = 'id,ref,full_name,nationality,phone,email,status_id,counsellor_id,preferred_courses,preferred_countries,preferred_level,civil_id,passport_no,lead_source,created_at,updated_at';
 const PAGE = 50;
 let filter = loadFilter();
 function loadFilter() {
@@ -280,10 +280,6 @@ export async function renderStudent(el, id, tab = 'overview') {
       };
     }
     const alerts = [];
-    for (const [k, label] of [['passport_expiry', 'Passport'], ['civil_id_expiry', 'Civil ID']]) {
-      const d = daysUntil(s[k]);
-      if (d != null && d <= 180) alerts.push(h('span.tag' + (d < 0 ? '.red' : '.amber'), icon('alert', 13), d < 0 ? t('{x} expired', { x: t(label) }) : t('{x} expires in {n} days', { x: t(label), n: d })));
-    }
     const missing = [!s.phone && t('Number'), !s.dob && t('DOB')].filter(Boolean);
     if (missing.length) alerts.unshift(h('span.tag.red', icon('alert', 13), t('Missing: {f}', { f: missing.join(', ') })));
     const quick = (ic, val, title) => val ? h('button.quick', { title: t('Copy {x}', { x: t(title) }), onclick: () => copyText(val) }, icon(ic, 15), h('span', val)) : null;
@@ -328,8 +324,6 @@ export async function renderStudent(el, id, tab = 'overview') {
         let shown;
         if (f.type === 'date') {
           shown = v ? fmtDate(v) : null;
-          const d = f.expiry ? daysUntil(v) : null;
-          if (shown && d != null && d <= 180) shown = h('span', shown, ' ', h('span.tag' + (d < 0 ? '.red' : '.amber'), d < 0 ? t('expired') : t('{n} days left', { n: d })));
         } else if (f.type === 'multi') shown = v && v.length ? v.join(', ') : null;
         else shown = v ?? null;
         if (f.key === 'dob' && v) { const age = Math.floor((Date.now() - new Date(v)) / 31557600000); shown = `${fmtDate(v)} (${t('{n} years', { n: age })})`; }

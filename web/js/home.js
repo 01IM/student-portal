@@ -21,7 +21,7 @@ export async function renderHome(el) {
   }
   try {
     const [students, activity] = await Promise.all([
-      api.select('students', 'select=id,ref,full_name,status_id,counsellor_id,created_at,passport_expiry,civil_id_expiry'),
+      api.select('students', 'select=id,ref,full_name,status_id,counsellor_id,created_at'),
       api.select('audit_log', 'select=*&student_id=not.is.null&order=at.desc&limit=12').catch(() => []),
     ]);
     clear(body);
@@ -50,22 +50,7 @@ export async function renderHome(el) {
         h('span.pipe-bar', h('i', { style: { width: (n / max) * 100 + '%', background: st.color } })),
         h('b.pipe-n', n)));
     }
-    body.append(h('section.card.span2', h('div.card-head', h('h2', t('Pipeline')), h('a.link', { href: '#/students' }, t('All students'))), pipe));
-
-    // --- expiring documents
-    const soon = [];
-    for (const s of open) {
-      for (const [k, label] of [['passport_expiry', t('Passport')], ['civil_id_expiry', t('Civil ID')]]) {
-        const d = daysUntil(s[k]);
-        if (d != null && d <= 180) soon.push({ s, label, d, date: s[k] });
-      }
-    }
-    soon.sort((a, b) => a.d - b.d);
-    body.append(h('section.card', h('div.card-head', h('h2', t('Expiring documents')), h('small.muted', t('next 6 months'))),
-      soon.length ? h('ul.list', soon.slice(0, 8).map(({ s, label, d, date }) => h('li', h('a', { href: `#/students/${s.id}` },
-        h('div', h('b', s.full_name), h('small.muted', `${label} · ${fmtDate(date)}`)),
-        h('span.tag' + (d < 0 ? '.red' : d <= 60 ? '.amber' : ''), d < 0 ? t('expired') : t('{n} days', { n: d })))))) : h('p.muted.pad', t('Nothing expiring soon.'))));
-
+    body.append(h('section.card', h('div.card-head', h('h2', t('Pipeline')), h('a.link', { href: '#/students' }, t('All students'))), pipe));
 
     // --- recent activity
     const names = Object.fromEntries(students.map((s) => [s.id, s]));

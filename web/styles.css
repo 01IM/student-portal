@@ -130,7 +130,7 @@ em.soon { font-style: normal; font-size: 10px; font-weight: 600; text-transform:
 .notice ul { margin: 6px 0; padding-inline-start: 18px; }
 
 /* ---------- home ---------- */
-.home-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .home-grid .span2 { grid-column: span 2; }
 .stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
 .stat { display: flex; align-items: center; gap: 14px; padding: 18px; background: #fff; border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); cursor: pointer; font: inherit; text-align: start; transition: .15s; }
