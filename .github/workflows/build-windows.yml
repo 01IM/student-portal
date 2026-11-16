@@ -1,0 +1,41 @@
+name: Build Windows app
+
+# Runs on every push to main (or by hand from the Actions tab).
+# Produces "Student Portal_x.y.z_x64-setup.exe" as a GitHub Release.
+# Installed copies of the app find the new release and offer to update themselves.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Build installer and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SP_BUILD: ${{ github.run_number }}
+        with:
+          tauriScript: npx --yes @tauri-apps/cli@2
+          tagName: v__VERSION__-build${{ github.run_number }}
+          releaseName: Student Portal v__VERSION__ (build ${{ github.run_number }})
+          releaseBody: ${{ github.event.head_commit.message }}
+          releaseDraft: false
+          prerelease: false
