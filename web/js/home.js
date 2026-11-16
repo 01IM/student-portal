@@ -54,7 +54,7 @@ export async function renderHome(el) {
 
     // --- recent activity
     const names = Object.fromEntries(students.map((s) => [s.id, s]));
-    body.append(h('section.card.span2', h('div.card-head', h('h2', t('Recent activity'))),
+    body.append(h('section.card', h('div.card-head', h('h2', t('Recent activity'))),
       activity.length ? h('ul.feed', activity.map((a) => h('li',
         h('span.feed-dot'),
         h('div', h('div', h('b', a.actor_name || t('System')), ' ', describeChange(a, true), ' ',
